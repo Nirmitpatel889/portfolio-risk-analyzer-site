@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #08090e;
+  --color-foreground: #f9fafb;
+  --color-card: #0d0f17;
+  --color-card-foreground: #f9fafb;
+  --color-popover: #0d0f17;
+  --color-popover-foreground: #f9fafb;
+  --color-primary: #3b82f6;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #1c2033;
+  --color-secondary-foreground: #9ca3af;
+  --color-muted: #1c2033;
+  --color-muted-foreground: #6b7280;
+  --color-accent: #1e3a5f;
+  --color-accent-foreground: #60a5fa;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #f9fafb;
+  --color-border: #1c2033;
+  --color-input: #111420;
+  --color-ring: #3b82f6;
+  --radius: 0.75rem;
+}
+
+:root {
+  --background: var(--color-background);
+  --foreground: var(--color-foreground);
+  --card: var(--color-card);
+  --card-foreground: var(--color-card-foreground);
+  --popover: var(--color-popover);
+  --popover-foreground: var(--color-popover-foreground);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-primary-foreground);
+  --secondary: var(--color-secondary);
+  --secondary-foreground: var(--color-secondary-foreground);
+  --muted: var(--color-muted);
+  --muted-foreground: var(--color-muted-foreground);
+  --accent: var(--color-accent);
+  --accent-foreground: var(--color-accent-foreground);
+  --destructive: var(--color-destructive);
+  --destructive-foreground: var(--color-destructive-foreground);
+  --border: var(--color-border);
+  --input: var(--color-input);
+  --ring: var(--color-ring);
+  --radius: 0.75rem;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(13, 15, 23, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(28, 32, 51, 0.5);
+  border-radius: 0.75rem;
+}
+
+.glass-card {
+  composes: glass; /* Alternatively just copy styles or use them both */
+  background: rgba(13, 15, 23, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(28, 32, 51, 0.5);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+}
+
+/* Custom scrollbar */
+::-webkit_scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit_scrollbar-track {
+  background: #08090e;
+}
+::-webkit_scrollbar-thumb {
+  background: #1c2033;
+  border-radius: 10px;
+}
+::-webkit_scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+/* High-tech accent glow */
+.accent-glow {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
