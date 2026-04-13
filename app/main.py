@@ -33,6 +33,25 @@ app.add_middleware(
 async def root():
     return {"status": "online", "message": "Portfolio Risk Analyzer API is running"}
 
+@app.get("/search")
+async def search_tickers(q: str):
+    try:
+        if len(q) < 2:
+            return []
+        import yfinance as yf
+        search = yf.Search(q, max_results=8)
+        results = []
+        for quote in search.quotes:
+            results.append({
+                "symbol": quote.get("symbol"),
+                "name": quote.get("shortname") or quote.get("longname"),
+                "exchange": quote.get("exchange"),
+                "type": quote.get("quoteType")
+            })
+        return results
+    except Exception as e:
+        return []
+
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_portfolio(req: AnalysisRequest):
     try:

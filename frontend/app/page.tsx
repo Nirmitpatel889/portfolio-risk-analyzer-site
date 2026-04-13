@@ -2,10 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  BarChart3, 
-  LineChart, 
-  PieChart, 
-  Settings2, 
   TrendingUp, 
   AlertTriangle, 
   Activity, 
@@ -15,7 +11,12 @@ import {
   Plus,
   Trash2,
   RefreshCw,
-  Info
+  Info,
+  Settings,
+  X,
+  PieChart as PieIcon,
+  BarChart3,
+  Target
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -33,48 +34,24 @@ import {
 } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 import { analyzePortfolio, optimizePortfolio, simulatePortfolio } from "./api-client";
+import SnowflakeChart from "@/components/SnowflakeChart";
+import HoldingCard from "@/components/HoldingCard";
+import AppSidebar from "@/components/AppSidebar";
+import TickerInput from "@/components/TickerInput";
 
 // --- Components ---
 
-const MetricCard = ({ title, value, sub, color = "primary", icon: Icon }: any) => {
-  const colors: any = {
-    primary: "text-blue-500",
-    green: "text-emerald-500",
-    red: "text-rose-500",
-    amber: "text-amber-500",
-    cyan: "text-cyan-500",
-  };
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass-card p-5 relative overflow-hidden group"
-    >
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">{title}</p>
-          <h3 className={`text-2xl font-mono font-medium ${colors[color]}`}>{value}</h3>
-        </div>
-        <div className={`p-2 rounded-lg bg-secondary/50 ${colors[color]}`}>
-          <Icon size={18} />
-        </div>
-      </div>
-      <p className="text-[11px] font-mono text-muted-foreground">{sub}</p>
-      <div className={`absolute bottom-0 left-0 h-[2px] w-0 bg-current transition-all duration-500 group-hover:w-full ${colors[color]}`} />
-    </motion.div>
-  );
-};
-
-const SectionHeader = ({ title, badge }: { title: string; badge?: string }) => (
-  <div className="flex items-center gap-4 mb-6">
-    <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground whitespace-nowrap">{title}</h2>
-    <div className="h-[1px] w-full bg-border" />
-    {badge && (
-      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 whitespace-nowrap">
-        {badge}
-      </span>
-    )}
+const MetricSummary = ({ label, value, sub, isPositive }: any) => (
+  <div className="flex flex-col">
+    <span className="text-[10px] text-[#808080] uppercase tracking-wider font-bold mb-1">{label}</span>
+    <div className="flex items-baseline gap-2">
+      <span className="text-xl font-bold text-white">{value}</span>
+      {sub && (
+        <span className={`text-xs font-medium ${isPositive ? 'text-success' : 'text-danger'}`}>
+          {sub}
+        </span>
+      )}
+    </div>
   </div>
 );
 
@@ -90,51 +67,49 @@ export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [optData, setOptData] = useState<any>(null);
   const [simData, setSimData] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("risk");
-  const [allocationMode, setAllocationMode] = useState<"ticker" | "sector">("ticker");
+  const [activeTab, setActiveTab] = useState("overview");
+  const [showConfig, setShowConfig] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const runAnalysis = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Run Risk Analysis
       const riskRes = await analyzePortfolio({
-        tickers,
-        weights,
+        tickers: tickers.filter(t => t !== ""),
+        weights: weights.filter((_, i) => tickers[i] !== ""),
         start_date: dateRange.start,
         end_date: dateRange.end,
         benchmark,
         rf_rate: 0.05,
         conf_level: 0.95,
-        stress_level: stressLevel,
       });
       setData(riskRes);
 
-      // Run Optimization
       const optRes = await optimizePortfolio({
-        tickers,
-        weights,
+        tickers: tickers.filter(t => t !== ""),
+        weights: weights.filter((_, i) => tickers[i] !== ""),
         start_date: dateRange.start,
         end_date: dateRange.end,
         rf_rate: 0.05,
       });
       setOptData(optRes);
 
-      // Run Simulation
       const simRes = await simulatePortfolio({
-        tickers,
-        weights,
+        tickers: tickers.filter(t => t !== ""),
+        weights: weights.filter((_, i) => tickers[i] !== ""),
         start_date: dateRange.start,
         end_date: dateRange.end,
         n_paths: 1000,
         horizon: 252,
         start_value: 10000.0,
-        stress_level: stressLevel,
-        use_fhs: true,
       });
       setSimData(simRes);
-
-    } catch (err) {
+      
+      if (showConfig) setShowConfig(false);
+    } catch (err: any) {
       console.error(err);
+      setError("Analysis failed. Please check your tickers (e.g., use 'AMZN' instead of 'AMAZON') and try again.");
     } finally {
       setLoading(false);
     }
@@ -143,8 +118,6 @@ export default function Dashboard() {
   const updateWeight = (index: number, val: number) => {
     const newWeights = [...weights];
     newWeights[index] = val;
-    // Normalize? Or keep raw and let backend handle?
-    // For UI simplicity, we'll keep it as is for now.
     setWeights(newWeights);
   };
 
@@ -160,362 +133,481 @@ export default function Dashboard() {
     setWeights([...weights, 0]);
   };
 
+  // Map metrics to Snowflake axes
+  const getSnowflakeData = () => {
+    if (!data) return [];
+    const m = data.metrics;
+    return [
+      { axis: "Returns", value: Math.min(100, Math.max(0, m.ann_return * 200)) },
+      { axis: "Efficiency", value: Math.min(100, Math.max(0, m.sharpe * 33)) },
+      { axis: "Stability", value: Math.min(100, Math.max(0, 100 - (m.ann_vol * 150))) },
+      { axis: "Robustness", value: Math.min(100, Math.max(0, 100 - (m.max_drawdown * 150))) },
+      { axis: "Diversity", value: Math.min(100, tickers.length * 15) },
+    ];
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden text-foreground">
-      {/* --- Sidebar --- */}
-      <aside className="w-[320px] bg-card border-r border-border overflow-y-auto p-6 flex flex-col gap-8 custom-scrollbar">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center accent-glow">
-            <Zap size={18} className="text-white" />
-          </div>
-          <h1 className="text-xl font-bold font-syne tracking-tight">RISK<span className="text-blue-500">DESK</span></h1>
-        </div>
+    <div className="flex h-screen overflow-hidden bg-[#121212] font-sans">
+      {/* Sidebar Navigation */}
+      <AppSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        <div>
-          <SectionHeader title="Portfolio Config" />
-          <div className="flex flex-col gap-3">
-            {tickers.map((ticker, i) => (
-              <div key={i} className="flex gap-2">
-                <input 
-                  value={ticker}
-                  onChange={(e) => {
-                    const next = [...tickers];
-                    next[i] = e.target.value.toUpperCase();
-                    setTickers(next);
-                  }}
-                  className="bg-input border border-border rounded-lg px-3 py-2 text-xs font-mono w-full focus:outline-none focus:border-blue-500 transition-colors"
-                  placeholder="SYM"
-                />
-                <input 
-                  type="number"
-                  value={weights[i]}
-                  onChange={(e) => updateWeight(i, parseFloat(e.target.value))}
-                  className="bg-input border border-border rounded-lg px-2 py-2 text-xs font-mono w-20 focus:outline-none focus:border-blue-500 transition-colors"
-                  step="0.01"
-                />
-                <button onClick={() => removeTicker(i)} className="text-muted-foreground hover:text-rose-500 transition-colors">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-            <button onClick={addTicker} className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-lg text-xs text-muted-foreground hover:bg-secondary/30 transition-colors">
-              <Plus size={14} /> Add Asset
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <SectionHeader title="Quant Tuning" />
-          <div className="flex flex-col gap-4">
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[10px] font-mono text-muted-foreground uppercase">Stress Level</label>
-                <span className="text-[10px] font-mono text-blue-500 font-bold">{stressLevel}x</span>
-              </div>
-              <input 
-                type="range" 
-                min="0.5" 
-                max="3.0" 
-                step="0.1" 
-                value={stressLevel}
-                onChange={(e) => setStressLevel(parseFloat(e.target.value))}
-                className="w-full h-1 bg-secondary rounded-lg appearance-none cursor-pointer accent-blue-600"
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 relative">
+        
+        {/* Top Header */}
+        <header className="h-16 border-b border-[#2C2C2C] bg-[#121212] px-8 flex items-center justify-between z-10">
+          <div className="flex items-center gap-6">
+            <h2 className="text-lg font-bold">My Portfolio <span className="text-[#808080] font-normal text-sm ml-2">Main holdings</span></h2>
+            <div className="h-6 w-[1px] bg-[#2C2C2C]" />
+            <div className="flex gap-8">
+              <MetricSummary 
+                label="Total Return" 
+                value={data ? `${(data.metrics.ann_return * 100).toFixed(1)}%` : "—"} 
+                sub={data ? `+${(data.metrics.alpha * 100).toFixed(1)}% vs market` : null}
+                isPositive={true}
               />
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-[8px] text-muted-foreground">DEFENSIVE</span>
-                <span className="text-[8px] text-muted-foreground">EXTREME</span>
-              </div>
-            </div>
-            
-            <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase mb-1 block">Benchmark</label>
-              <select 
-                value={benchmark}
-                onChange={(e) => setBenchmark(e.target.value)}
-                className="bg-input border border-border rounded-lg px-3 py-2 text-xs font-mono w-full focus:outline-none"
-              >
-                <option value="SPY">SPY (S&P 500)</option>
-                <option value="QQQ">QQQ (Nasdaq 100)</option>
-                <option value="DIA">DIA (Dow 30)</option>
-              </select>
-            </div>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="text-[10px] font-mono text-muted-foreground uppercase mb-1 block">Start Date</label>
-                <input type="date" value={dateRange.start} onChange={(e) => setDateRange({...dateRange, start: e.target.value})} className="bg-input border border-border rounded-lg px-2 py-1.5 text-[11px] font-mono w-full" />
-              </div>
-              <div className="flex-1">
-                <label className="text-[10px] font-mono text-muted-foreground uppercase mb-1 block">End Date</label>
-                <input type="date" value={dateRange.end} onChange={(e) => setDateRange({...dateRange, end: e.target.value})} className="bg-input border border-border rounded-lg px-2 py-1.5 text-[11px] font-mono w-full" />
-              </div>
+              <MetricSummary 
+                label="Risk Score" 
+                value={data ? (data.metrics.sharpe * 10).toFixed(1) : "—"} 
+                sub={null}
+              />
             </div>
           </div>
-        </div>
+          <button 
+            onClick={() => setShowConfig(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#2C2C2C] hover:bg-[#333] border border-[#3A3A3A] rounded-md text-sm font-bold transition-all"
+          >
+            <Settings size={16} /> Configure
+          </button>
+        </header>
 
-        <button 
-          onClick={runAnalysis}
-          disabled={loading}
-          className="mt-auto w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-900 rounded-xl text-sm font-bold flex items-center justify-center gap-2 accent-glow transition-all active:scale-95"
-        >
-          {loading ? <RefreshCw className="animate-spin text-white" size={18} /> : <>RUN ANALYSIS <ChevronRight size={18} /></>}
-        </button>
-      </aside>
-
-      {/* --- Main Content --- */}
-      <main className="flex-1 overflow-y-auto bg-background p-8 custom-scrollbar">
-        {!data ? (
-          <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center mb-6"
-            >
-              <TrendingUp className="text-blue-500" size={32} />
-            </motion.div>
-            <h2 className="text-3xl font-bold mb-4 font-syne">Institutional-grade<br/><span className="text-blue-500">Portfolio Analytics</span></h2>
-            <p className="text-muted-foreground text-sm leading-relaxed mb-8">
-              Configure your tickers and weights in the sidebar to compute VaR, CVaR, Sharpe ratio, drawdowns, and efficient frontiers.
-            </p>
-            <div className="grid grid-cols-2 gap-4 w-full">
-              {[
-                { label: "Real-time Data", icon: Globe },
-                { label: "Advanced Ratios", icon: Activity },
-                { label: "Monte Carlo", icon: Zap },
-                { label: "Optimization", icon: PieChart },
-              ].map((item, i) => (
-                <div key={i} className="glass p-4 rounded-xl flex items-center gap-3 text-left">
-                  <item.icon size={18} className="text-blue-500" />
-                  <span className="text-xs font-mono text-muted-foreground">{item.label}</span>
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          {!data && !loading ? (
+             <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto">
+                <div className="w-20 h-20 rounded-3xl bg-[#1E1E1E] border border-[#2C2C2C] flex items-center justify-center mb-8 shadow-2xl">
+                  <Target className="text-[#FFB946]" size={40} />
                 </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-            {/* KPI Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-              <MetricCard title="Ann. Return" value={`${(data.metrics.ann_return * 100).toFixed(1)}%`} sub={`vs ${benchmark}`} icon={TrendingUp} color="green" />
-              <MetricCard title="Volatility" value={`${(data.metrics.ann_vol * 100).toFixed(1)}%`} sub="Annualized σ" icon={Activity} color="cyan" />
-              <MetricCard title="Sharpe Ratio" value={data.metrics.sharpe.toFixed(2)} sub="Risk-Adj. Return" icon={BarChart3} color="primary" />
-              <MetricCard title="Max Drawdown" value={`${(data.metrics.max_drawdown * 100).toFixed(1)}%`} sub="Peak-to-Trough" icon={AlertTriangle} color="red" />
-              <MetricCard title="Beta" value={data.metrics.beta.toFixed(2)} sub={`Systemic Risk`} icon={Globe} color="amber" />
-              <MetricCard title="VaR (95%)" value={`${(data.metrics.var_hist * 100).toFixed(1)}%`} sub="1-Day Est. Loss" icon={AlertTriangle} color="red" />
-            </div>
-
-            {/* Tabs Sidebar alternative inside main */}
-            <div className="flex gap-2 p-1 bg-card rounded-xl w-fit border border-border">
-              {["risk", "optimizer", "simulation"].map((tab) => (
+                <h2 className="text-4xl font-black mb-4 tracking-tighter">ANALYZE YOUR <span className="text-[#FFB946]">RISK DNA</span></h2>
+                <p className="text-[#A0A0A0] text-sm leading-relaxed mb-10">
+                  Import your holdings to generate your investment snowflake, stress test your positions, and optimize your allocation for the current market regime.
+                </p>
                 <button 
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg accent-glow' : 'text-muted-foreground hover:bg-secondary'}`}
+                  onClick={() => setShowConfig(true)}
+                  className="px-8 py-4 bg-[#FFB946] text-[#121212] font-black rounded-lg text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl"
                 >
-                  {tab}
+                  Get Started
                 </button>
-              ))}
-            </div>
-
-            {/* Tab Content */}
-            {activeTab === "risk" && (
-              <>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                  <div className="glass-card p-6">
-                    <SectionHeader title="Cumulative Returns" badge="Time Series" />
-                    <div className="h-[300px] w-full mt-4">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={data.cumulative_returns.x.map((x: string, i: number) => ({ date: x, val: data.cumulative_returns.y[i] }))}>
-                          <defs>
-                            <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c2033" />
-                          <XAxis dataKey="date" hide />
-                          <YAxis domain={['auto', 'auto']} tick={{fill: '#4b5563', fontSize: 10}} tickFormatter={(v) => `$${v.toFixed(1)}`} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={{backgroundColor: '#0d0f17', border: '1px solid #1c2033', fontSize: '10px'}} />
-                          <Area type="monotone" dataKey="val" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorVal)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="glass-card p-6">
-                    <SectionHeader title="Portfolio Drawdown" badge="Percentage" />
-                    <div className="h-[300px] w-full mt-4">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={data.drawdown_series.x.map((x: string, i: number) => ({ date: x, val: data.drawdown_series.y[i] }))}>
-                          <defs>
-                            <linearGradient id="colorDD" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1c2033" />
-                          <XAxis dataKey="date" hide />
-                          <YAxis domain={['auto', 0]} tick={{fill: '#4b5563', fontSize: 10}} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={{backgroundColor: '#0d0f17', border: '1px solid #1c2033', fontSize: '10px'}} />
-                          <Area type="monotone" dataKey="val" stroke="#f43f5e" strokeWidth={1.5} fillOpacity={1} fill="url(#colorDD)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
-                  <div className="glass-card p-6 xl:col-span-1">
-                    <div className="flex justify-between items-center mb-6">
-                      <SectionHeader title="Allocation" badge={allocationMode === 'ticker' ? 'by weights' : 'by sector'} />
-                      <div className="flex gap-1 p-0.5 bg-secondary rounded-lg mb-6">
-                        <button onClick={() => setAllocationMode('ticker')} className={`px-2 py-1 text-[9px] font-bold rounded ${allocationMode === 'ticker' ? 'bg-blue-600 text-white' : 'text-muted-foreground'}`}>SYM</button>
-                        <button onClick={() => setAllocationMode('sector')} className={`px-2 py-1 text-[9px] font-bold rounded ${allocationMode === 'sector' ? 'bg-blue-600 text-white' : 'text-muted-foreground'}`}>SEC</button>
+             </div>
+          ) : loading ? (
+             <div className="h-full flex flex-col items-center justify-center gap-4">
+                <RefreshCw size={48} className="animate-spin text-[#FFB946]" />
+                <p className="text-[#808080] font-bold animate-pulse uppercase tracking-[0.2em] text-xs">Processing Quant Models...</p>
+             </div>
+          ) : (
+            <div className="max-w-[1400px] mx-auto space-y-12">
+              
+              {/* Overview Tab */}
+              {activeTab === "overview" && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    {/* Snowflake Section */}
+                    <div className="lg:col-span-4 sws-card p-8 h-[500px] flex flex-col">
+                      <div className="flex justify-between items-center mb-4">
+                         <h3 className="font-bold uppercase text-[11px] tracking-widest text-[#808080]">Risk/Reward Snowflake</h3>
+                         <Info size={14} className="text-[#555] cursor-pointer hover:text-white" />
+                      </div>
+                      <div className="flex-1 min-h-0">
+                        <SnowflakeChart data={getSnowflakeData()} />
+                      </div>
+                      <div className="grid grid-cols-5 gap-1 mt-4">
+                        {getSnowflakeData().map((d: any) => (
+                           <div key={d.axis} className="flex flex-col items-center">
+                              <div className="h-1 w-full bg-[#2C2C2C] rounded-full overflow-hidden">
+                                 <div className="h-full bg-[#FFB946]" style={{ width: `${d.value}%` }} />
+                              </div>
+                              <span className="text-[8px] mt-1 text-[#666] uppercase">{d.axis.substring(0, 3)}</span>
+                           </div>
+                        ))}
                       </div>
                     </div>
-                    <div className="h-[250px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RePieChart>
-                          <Pie
-                            data={allocationMode === 'ticker' 
-                              ? tickers.map((t, i) => ({ name: t, value: weights[i] }))
-                              : Object.entries(data.sector_exposure).map(([s, w]: any) => ({ name: s, value: w }))
-                            }
-                            innerRadius={60}
-                            outerRadius={80}
-                            paddingAngle={5}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {(allocationMode === 'ticker' ? tickers : Object.keys(data.sector_exposure)).map((_, index) => (
-                              <Cell key={`cell-${index}`} fill={['#3b82f6', '#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#f43f5e'][index % 7]} />
+
+                    {/* Stats & Brief Analysis */}
+                    <div className="lg:col-span-8 flex flex-col gap-6">
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {[
+                            { label: "Hist. VaR", val: data.metrics.var_hist, color: "text-danger" },
+                            { label: "Robust VaR", val: data.metrics.var_student_t, color: "text-danger" },
+                            { label: "Beta", val: data.metrics.beta, color: "text-warning" },
+                            { label: "Alpha", val: data.metrics.alpha, color: "text-success", pre: "+" },
+                          ].map((m, i) => (
+                            <div key={i} className="sws-card p-6">
+                              <p className="text-[10px] text-[#808080] uppercase font-bold mb-2">{m.label}</p>
+                              <p className={`text-2xl font-black ${m.color || 'text-white'}`}>
+                                {m.pre}{typeof m.val === 'number' && m.val < 1 ? `${(m.val * 100).toFixed(1)}%` : m.val.toFixed(2)}
+                              </p>
+                            </div>
+                          ))}
+                       </div>
+
+                       <div className="sws-card p-8">
+                          <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
+                             <BarChart3 size={18} className="text-[#FFB946]" /> Portfolio Progress
+                          </h3>
+                          <div className="h-[250px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={data.cumulative_returns.x.map((x: string, i: number) => ({ date: x, val: data.cumulative_returns.y[i] }))}>
+                                <defs>
+                                  <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#ffb946" stopOpacity={0.2}/>
+                                    <stop offset="95%" stopColor="#ffb946" stopOpacity={0}/>
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#222" />
+                                <XAxis dataKey="date" hide />
+                                <YAxis domain={['auto', 'auto']} tick={{fill: '#444', fontSize: 10}} tickFormatter={(v) => `$${v.toFixed(0)}`} axisLine={false} tickLine={false} />
+                                <Tooltip 
+                                  contentStyle={{backgroundColor: '#1E1E1E', border: '1px solid #2C2C2C', borderRadius: '8px', fontSize: '10px'}}
+                                />
+                                <Area type="monotone" dataKey="val" stroke="#ffb946" strokeWidth={2} fillOpacity={1} fill="url(#colorVal)" />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Holdings Tab */}
+              {activeTab === "holdings" && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                   <div className="flex justify-between items-end">
+                      <div>
+                        <h2 className="text-2xl font-black">All Holdings</h2>
+                        <p className="text-sm text-[#808080]">Individual analysis of {tickers.length} assets</p>
+                      </div>
+                      <div className="flex gap-2">
+                         <button className="px-3 py-1.5 rounded bg-[#2C2C2C] text-xs font-bold hover:bg-[#333]">Export CSV</button>
+                      </div>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+                      {tickers.map((t, i) => (
+                        <HoldingCard 
+                          key={i} 
+                          ticker={t} 
+                          weight={weights[i]} 
+                          sector={data.ticker_info[t]?.sector}
+                          annReturn={0} 
+                          volatility={0}
+                          sharpe={0}
+                        />
+                      ))}
+                   </div>
+                </div>
+              )}
+
+              {/* Deep Analysis Tab */}
+              {activeTab === "analysis" && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      <div className="sws-card p-8">
+                         <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
+                            <PieIcon size={18} className="text-[#FFB946]" /> Sector Allocation
+                         </h3>
+                         <div className="h-[300px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                               <RePieChart>
+                                  <Pie
+                                     data={Object.entries(data.sector_exposure).map(([name, value]) => ({ name, value }))}
+                                     innerRadius={60}
+                                     outerRadius={100}
+                                     paddingAngle={5}
+                                     dataKey="value"
+                                  >
+                                     {Object.entries(data.sector_exposure).map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={['#FFB946', '#FF9F00', '#FF8500', '#FF6B00', '#E55C00'][index % 5]} />
+                                     ))}
+                                  </Pie>
+                                  <Tooltip contentStyle={{backgroundColor: '#1E1E1E', border: 'none', borderRadius: '8px'}} />
+                               </RePieChart>
+                            </ResponsiveContainer>
+                         </div>
+                         <div className="grid grid-cols-2 gap-4 mt-4">
+                            {Object.entries(data.sector_exposure).map(([sector, weight]: any, i) => (
+                               <div key={sector} className="flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#FFB946', '#FF9F00', '#FF8500', '#FF6B00', '#E55C00'][i % 5] }} />
+                                  <span className="text-[10px] text-[#A0A0A0] uppercase font-bold">{sector}</span>
+                                  <span className="text-[10px] text-white font-bold ml-auto">{(weight * 100).toFixed(1)}%</span>
+                               </div>
                             ))}
-                          </Pie>
-                          <Tooltip contentStyle={{backgroundColor: '#0d0f17', border: '1px solid #1c2033', fontSize: '10px'}} />
-                        </RePieChart>
-                      </ResponsiveContainer>
-                      <div className="grid grid-cols-2 gap-2 mt-4 custom-scrollbar overflow-y-auto max-h-[100px]">
-                         {(allocationMode === 'ticker' ? tickers : Object.keys(data.sector_exposure)).map((item, i) => (
-                           <div key={i} className="flex items-center gap-2">
-                             <div className="w-2 h-2 rounded-full" style={{backgroundColor: ['#3b82f6', '#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#f43f5e'][i % 7]}} />
-                             <span className="text-[9px] font-mono font-bold text-foreground truncate max-w-[80px]">{item}</span>
-                             <span className="text-[9px] font-mono text-muted-foreground ml-auto">
-                               {((allocationMode === 'ticker' ? weights[i] : data.sector_exposure[item]) * 100).toFixed(0)}%
-                             </span>
-                           </div>
+                         </div>
+                      </div>
+
+                      <div className="sws-card p-8">
+                         <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
+                            <Activity size={18} className="text-[#FFB946]" /> Asset Correlations
+                         </h3>
+                         <div className="grid" style={{ gridTemplateColumns: `repeat(${tickers.length + 1}, 1fr)` }}>
+                            <div className="h-8 w-8" />
+                            {tickers.map(t => (
+                               <div key={t} className="text-[8px] font-bold text-[#808080] flex items-center justify-center p-1">{t}</div>
+                            ))}
+                            {tickers.map((t1, i) => (
+                               <React.Fragment key={t1}>
+                                  <div className="text-[8px] font-bold text-[#808080] flex items-center justify-center p-1">{t1}</div>
+                                  {tickers.map((t2, j) => {
+                                     const val = data.correlation_matrix[t1][t2];
+                                     return (
+                                        <div 
+                                           key={`${t1}-${t2}`} 
+                                           className="aspect-square flex items-center justify-center text-[8px] border border-[#121212]"
+                                           style={{ 
+                                              backgroundColor: val > 0.8 ? 'rgba(255, 185, 70, 0.4)' : val > 0.5 ? 'rgba(255, 185, 70, 0.2)' : 'rgba(255,185,70,0.05)',
+                                              color: val > 0.8 ? '#fff' : '#888'
+                                           }}
+                                        >
+                                           {val.toFixed(2)}
+                                        </div>
+                                     );
+                                  })}
+                               </React.Fragment>
+                            ))}
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              )}
+
+              {/* Optimizer Tab */}
+              {activeTab === "optimizer" && optData && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                      <div className="lg:col-span-8 sws-card p-8">
+                         <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
+                            <BarChart3 size={18} className="text-[#FFB946]" /> Efficient Frontier
+                         </h3>
+                         <div className="h-[400px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                               <AreaChart syncId="frontier">
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#222" />
+                                  <XAxis 
+                                     dataKey="volatility" 
+                                     type="number" 
+                                     domain={['auto', 'auto']} 
+                                     label={{ value: 'Volatility', position: 'insideBottom', fill: '#444', fontSize: 10, offset: -5 }}
+                                     tick={{fill: '#444', fontSize: 10}}
+                                  />
+                                  <YAxis 
+                                     domain={['auto', 'auto']} 
+                                     label={{ value: 'Return', angle: -90, position: 'insideLeft', fill: '#444', fontSize: 10 }}
+                                     tick={{fill: '#444', fontSize: 10}}
+                                     tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                                  />
+                                  <Tooltip contentStyle={{backgroundColor: '#1E1E1E', border: 'none', borderRadius: '8px'}} />
+                                  <Area 
+                                     data={optData.efficient_frontier} 
+                                     type="monotone" 
+                                     dataKey="return" 
+                                     stroke="#FFB946" 
+                                     fill="transparent" 
+                                     strokeWidth={3}
+                                  />
+                               </AreaChart>
+                            </ResponsiveContainer>
+                         </div>
+                      </div>
+                      
+                      <div className="lg:col-span-4 space-y-6">
+                         {[
+                            { label: "Optimal Sharpe Ratio", value: optData.max_sharpe.sharpe.toFixed(2), icon: TrendingUp },
+                            { label: "Target Return", value: `${(optData.max_sharpe.return * 100).toFixed(1)}%`, icon: Target },
+                            { label: "Minimized Vol", value: `${(optData.min_variance.volatility * 100).toFixed(1)}%`, icon: Activity }
+                         ].map((stat, i) => (
+                            <div key={i} className="sws-card p-6 flex items-center gap-4">
+                               <div className="w-10 h-10 rounded-lg bg-[#FFB946]/10 flex items-center justify-center">
+                                  <stat.icon size={20} className="text-[#FFB946]" />
+                               </div>
+                               <div>
+                                  <p className="text-[10px] text-[#666] font-bold uppercase tracking-widest">{stat.label}</p>
+                                  <p className="text-xl font-black">{stat.value}</p>
+                               </div>
+                            </div>
                          ))}
                       </div>
-                    </div>
-                  </div>
+                   </div>
+                </div>
+              )}
 
-                  <div className="glass-card p-6 xl:col-span-2">
-                    <SectionHeader title="Risk Metrics Comparison" badge="Summary" />
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">
-                      {[
-                        { label: "Hist. VaR", val: data.metrics.var_hist, color: "text-rose-400" },
-                        { label: "Robust VaR (T)", val: data.metrics.var_student_t, color: "text-rose-400" },
-                        { label: "Monte Carlo", val: data.metrics.var_mc, color: "text-rose-400" },
-                        { label: "CVaR (ES)", val: data.metrics.cvar, color: "text-orange-400" },
-                      ].map((m, i) => (
-                        <div key={i} className="flex flex-col gap-1">
-                          <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">{m.label}</span>
-                          <span className={`text-xl font-bold font-mono ${m.color}`}>{(m.val * 100).toFixed(2)}%</span>
+              {/* Simulation Tab */}
+              {activeTab === "simulation" && simData && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                   <div className="sws-card p-8">
+                      <div className="flex justify-between items-center mb-10">
+                         <div>
+                            <h3 className="text-sm font-bold flex items-center gap-2 mb-1">
+                               <Zap size={18} className="text-[#FFB946]" /> Monte Carlo Projection
+                            </h3>
+                            <p className="text-xs text-[#666]">1,000 simulated paths based on historical regime</p>
+                         </div>
+                         <div className="flex gap-4">
+                            <div className="flex items-center gap-2">
+                               <div className="w-3 h-3 rounded bg-[#FFB946]" />
+                               <span className="text-[10px] uppercase font-bold text-[#888]">Median Outcome</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <div className="w-3 h-3 rounded bg-[#FFB946]/20" />
+                               <span className="text-[10px] uppercase font-bold text-[#888]">95% CI</span>
+                            </div>
+                         </div>
+                      </div>
+                      <div className="h-[400px]">
+                         <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={simData.median.map((m: any, i: number) => ({
+                               index: i,
+                               median: m,
+                               low: simData.p5[i],
+                               high: simData.p95[i]
+                            }))}>
+                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#222" />
+                               <XAxis dataKey="index" hide />
+                               <YAxis tick={{fill: '#444', fontSize: 10}} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                               <Tooltip contentStyle={{backgroundColor: '#1E1E1E', border: 'none', borderRadius: '8px'}} />
+                               <Area type="monotone" dataKey="low" stackId="1" stroke="none" fill="#FFB946" fillOpacity={0.05} />
+                               <Area type="monotone" dataKey="high" stackId="2" stroke="none" fill="#FFB946" fillOpacity={0.1} />
+                               <Area type="monotone" dataKey="median" stroke="#FFB946" strokeWidth={3} fill="none" />
+                            </AreaChart>
+                         </ResponsiveContainer>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-10 pt-10 border-t border-[#222]">
+                         <div>
+                            <p className="text-[10px] text-[#666] font-bold uppercase mb-2">Current Value</p>
+                            <p className="text-2xl font-black">$10,000</p>
+                          </div>
+                          <div>
+                             <p className="text-[10px] text-[#666] font-bold uppercase mb-2">Median 1Y Estimate</p>
+                             <p className="text-2xl font-black text-white">${simData.median_outcome.toLocaleString()}</p>
+                          </div>
+                          <div>
+                             <p className="text-[10px] text-[#666] font-bold uppercase mb-2">Prob. of Loss</p>
+                             <p className={`text-2xl font-black ${simData.prob_loss > 0.3 ? 'text-danger' : 'text-success'}`}>
+                                {(simData.prob_loss * 100).toFixed(1)}%
+                             </p>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+              )}
+
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Slide-out Config Panel */}
+      <AnimatePresence>
+        {showConfig && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowConfig(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            />
+            <motion.div 
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed right-0 top-0 bottom-0 w-[400px] bg-[#1E1E1E] border-l border-[#2C2C2C] z-50 p-8 flex flex-col gap-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-black uppercase tracking-widest">Portfolio <span className="text-[#FFB946]">DNA</span></h2>
+                <button onClick={() => setShowConfig(false)} className="p-2 hover:bg-[#2C2C2C] rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-8">
+                  {error && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 bg-danger/10 border border-danger/20 rounded-md flex gap-3"
+                    >
+                      <AlertTriangle className="text-danger shrink-0" size={18} />
+                      <p className="text-xs text-danger font-medium leading-relaxed">{error}</p>
+                    </motion.div>
+                  )}
+                  <section>
+                    <label className="text-[10px] font-bold uppercase text-[#808080] tracking-widest mb-4 block">Holdings & Weights</label>
+                    <div className="space-y-3">
+                      {tickers.map((ticker, i) => (
+                        <div key={i} className="flex gap-2">
+                          <TickerInput 
+                            value={ticker}
+                            onChange={(val) => {
+                              const next = [...tickers];
+                              next[i] = val;
+                              setTickers(next);
+                            }}
+                            placeholder="TICKER"
+                          />
+                          <input 
+                            type="number"
+                            value={weights[i]}
+                            onChange={(e) => updateWeight(i, parseFloat(e.target.value))}
+                            className="bg-[#121212] border border-[#2C2C2C] rounded px-2 py-2 text-xs font-bold w-24 focus:outline-none focus:border-[#FFB946]"
+                            step="0.01"
+                          />
+                          <button onClick={() => removeTicker(i)} className="text-[#555] hover:text-danger p-2">
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       ))}
+                      <button onClick={addTicker} className="w-full py-2 border border-dashed border-[#2C2C2C] rounded text-[10px] font-bold uppercase text-[#808080] hover:bg-[#2C2C2C] transition-colors">
+                        + Add Position
+                      </button>
                     </div>
-                    <div className="mt-12 p-4 rounded-xl bg-orange-500/5 border border-orange-500/10 flex gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500 flex-shrink-0">
-                        <Info size={18} />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold font-syne text-orange-400 mb-1">AI Risk Insight</h4>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
-                          Your portfolio has a 5% historical probability of losing more than <b>{(data.metrics.var_hist * 100).toFixed(2)}%</b> in a single day. 
-                          The CVaR (Expected Shortfall) suggests that if that threshold is breached, the average expected loss is <b>{(data.metrics.cvar * 100).toFixed(2)}%</b>.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+                  </section>
 
-            {activeTab === "optimizer" && optData && (
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                <div className="glass-card p-6 xl:col-span-2">
-                  <SectionHeader title="Efficient Frontier" badge="Modern Portfolio Theory" />
-                  <div className="h-[400px] w-full mt-4">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <ReLineChart>
-                           <XAxis type="number" dataKey="volatility" name="Volatility" tick={{fill: '#4b5563', fontSize: 10}} tickFormatter={(v) => `${(v*100).toFixed(0)}%`} domain={['auto', 'auto']} />
-                           <YAxis type="number" dataKey="return" name="Return" tick={{fill: '#4b5563', fontSize: 10}} tickFormatter={(v) => `${(v*100).toFixed(0)}%`} domain={['auto', 'auto']} />
-                           <Tooltip contentStyle={{backgroundColor: '#0d0f17', border: '1px solid #1c2033', fontSize: '10px'}} />
-                           <Line data={optData.efficient_frontier} type="monotone" dataKey="return" stroke="#3b82f6" dot={false} strokeWidth={3} />
-                           {/* Simplified scattering for random portfolios could go here if needed */}
-                        </ReLineChart>
-                     </ResponsiveContainer>
-                  </div>
-                </div>
-                <div className="glass-card p-6">
-                  <SectionHeader title="Optimized Weights" />
-                  <div className="space-y-6 mt-4">
-                    <div className="p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
-                       <h4 className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Max Sharpe Portfolio</h4>
-                       <p className="text-xl font-mono text-emerald-500 font-bold">{(optData.max_sharpe.return * 100).toFixed(1)}% Ret / {(optData.max_sharpe.volatility * 100).toFixed(1)}% Vol</p>
+                  <section>
+                    <label className="text-[10px] font-bold uppercase text-[#808080] tracking-widest mb-4 block">Benchmark Engine</label>
+                    <select 
+                      value={benchmark}
+                      onChange={(e) => setBenchmark(e.target.value)}
+                      className="bg-[#121212] border border-[#2C2C2C] rounded px-3 py-2 text-xs font-bold w-full focus:outline-none"
+                    >
+                      <option value="SPY">S&P 500 (SPY)</option>
+                      <option value="QQQ">Nasdaq 100 (QQQ)</option>
+                      <option value="DIA">Dow Jones (DIA)</option>
+                    </select>
+                  </section>
+
+                  <section>
+                    <label className="text-[10px] font-bold uppercase text-[#808080] tracking-widest mb-4 block">Date Range</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <input type="date" value={dateRange.start} onChange={(e) => setDateRange({...dateRange, start: e.target.value})} className="bg-[#121212] border border-[#2C2C2C] rounded px-3 py-2 text-xs font-bold w-full" />
+                      <input type="date" value={dateRange.end} onChange={(e) => setDateRange({...dateRange, end: e.target.value})} className="bg-[#121212] border border-[#2C2C2C] rounded px-3 py-2 text-xs font-bold w-full" />
                     </div>
-                    <div className="space-y-3">
-                       {Object.entries(optData.max_sharpe.weights).map(([ticker, w]: any) => (
-                         <div key={ticker} className="flex justify-between items-center text-[11px] font-mono">
-                           <span className="text-muted-foreground">{ticker}</span>
-                           <span className="text-foreground">{(w * 100).toFixed(1)}%</span>
-                         </div>
-                       ))}
-                    </div>
-                  </div>
+                  </section>
                 </div>
               </div>
-            )}
 
-            {activeTab === "simulation" && simData && (
-               <div className="glass-card p-6">
-                 <SectionHeader title="Monte Carlo Projection" badge="1-Year Outlook" />
-                 <div className="h-[400px] w-full mt-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                       <AreaChart data={simData.median.map((m: number, i: number) => ({
-                         day: i,
-                         median: m,
-                         p5: simData.p5[i],
-                         p95: simData.p95[i],
-                         p25: simData.p25[i],
-                         p75: simData.p75[i],
-                       }))}>
-                         <XAxis dataKey="day" hide />
-                         <YAxis tick={{fill: '#4b5563', fontSize: 10}} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                         <Tooltip contentStyle={{backgroundColor: '#0d0f17', border: '1px solid #1c2033', fontSize: '10px'}} />
-                         <Area type="monotone" dataKey="p95" stroke="none" fill="#3b82f6" fillOpacity={0.05} />
-                         <Area type="monotone" dataKey="p75" stroke="none" fill="#3b82f6" fillOpacity={0.1} />
-                         <Area type="monotone" dataKey="median" stroke="#3b82f6" fill="none" strokeWidth={2} />
-                       </AreaChart>
-                    </ResponsiveContainer>
-                 </div>
-                 <div className="grid grid-cols-4 gap-4 mt-8">
-                    {[
-                      { label: "Median Final", val: simData.median_outcome, color: "text-blue-400" },
-                      { label: "Prob. of Loss", val: simData.prob_loss * 100, unit: "%", color: "text-rose-400" },
-                      { label: "Upside (95th)", val: simData.p95[simData.p95.length - 1], color: "text-emerald-400" },
-                      { label: "Downside (5th)", val: simData.p5[simData.p5.length - 1], color: "text-rose-400" },
-                    ].map((s, i) => (
-                      <div key={i} className="glass p-4 rounded-xl">
-                        <p className="text-[10px] font-mono uppercase text-muted-foreground mb-1">{s.label}</p>
-                        <p className={`text-lg font-bold font-mono ${s.color}`}>
-                          {s.val > 1000 ? `$${s.val.toLocaleString(undefined, {maximumFractionDigits:0})}` : `${s.val.toFixed(1)}${s.unit || ''}`}
-                        </p>
-                      </div>
-                    ))}
-                 </div>
-               </div>
-            )}
-          </div>
+              <button 
+                onClick={runAnalysis}
+                disabled={loading}
+                className="w-full py-4 bg-[#FFB946] text-[#121212] font-black rounded-lg text-sm uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl disabled:opacity-50"
+              >
+                {loading ? <RefreshCw className="animate-spin mx-auto" /> : "Recompute Models"}
+              </button>
+            </motion.div>
+          </>
         )}
-      </main>
+      </AnimatePresence>
     </div>
   );
 }
+

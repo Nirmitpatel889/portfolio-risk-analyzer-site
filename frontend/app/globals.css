@@ -1,26 +1,27 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #08090e;
-  --color-foreground: #f9fafb;
-  --color-card: #0d0f17;
-  --color-card-foreground: #f9fafb;
-  --color-popover: #0d0f17;
-  --color-popover-foreground: #f9fafb;
-  --color-primary: #3b82f6;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #1c2033;
-  --color-secondary-foreground: #9ca3af;
-  --color-muted: #1c2033;
-  --color-muted-foreground: #6b7280;
-  --color-accent: #1e3a5f;
-  --color-accent-foreground: #60a5fa;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #f9fafb;
-  --color-border: #1c2033;
-  --color-input: #111420;
-  --color-ring: #3b82f6;
-  --radius: 0.75rem;
+  --color-background: #121212;
+  --color-foreground: #ffffff;
+  --color-card: #1e1e1e;
+  --color-card-foreground: #ffffff;
+  --color-popover: #1e1e1e;
+  --color-popover-foreground: #ffffff;
+  --color-primary: #ffb946;
+  --color-primary-foreground: #121212;
+  --color-secondary: #2c2c2c;
+  --color-secondary-foreground: #a0a0a0;
+  --color-muted: #2c2c2c;
+  --color-muted-foreground: #808080;
+  --color-accent: #333333;
+  --color-accent-foreground: #ffb946;
+  --color-destructive: #e84f4f;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #2c2c2c;
+  --color-input: #1a1a1a;
+  --color-ring: #ffb946;
+  --color-success: #2ac479;
+  --radius: 0.5rem;
 }
 
 :root {
@@ -43,13 +44,15 @@
   --border: var(--color-border);
   --input: var(--color-input);
   --ring: var(--color-ring);
-  --radius: 0.75rem;
+  --radius: 0.5rem;
+  --success: var(--color-success);
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer base {
@@ -58,48 +61,55 @@ body {
   }
 }
 
-/* Glassmorphism utility */
-.glass {
-  background: rgba(13, 15, 23, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(28, 32, 51, 0.5);
-  border-radius: 0.75rem;
+/* Simply Wall St Style Cards */
+.sws-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
 }
 
-.glass-card {
-  composes: glass; /* Alternatively just copy styles or use them both */
-  background: rgba(13, 15, 23, 0.7);
+.sws-card:hover {
+  border-color: #444;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(30, 30, 30, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(28, 32, 51, 0.5);
-  border-radius: 0.75rem;
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* Custom scrollbar */
-::-webkit_scrollbar {
-  width: 6px;
-  height: 6px;
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-::-webkit_scrollbar-track {
-  background: #08090e;
+::-webkit-scrollbar-track {
+  background: #121212;
 }
-::-webkit_scrollbar-thumb {
-  background: #1c2033;
-  border-radius: 10px;
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
 }
-::-webkit_scrollbar-thumb:hover {
-  background: #3b82f6;
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
 }
 
-/* High-tech accent glow */
-.accent-glow {
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
-}
+/* SWS Specifics */
+.text-success { color: #2ac479; }
+.text-danger { color: #e84f4f; }
+.text-warning { color: #ffb946; }
+
+.bg-success-subtle { background: rgba(42, 196, 121, 0.1); }
+.bg-danger-subtle { background: rgba(232, 79, 79, 0.1); }
+.bg-warning-subtle { background: rgba(255, 185, 70, 0.1); }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
 }
+

@@ -51,3 +51,9 @@ export async function simulatePortfolio(data: {
   if (!res.ok) throw new Error('Simulation failed');
   return res.json();
 }
+
+export async function searchTickers(q: string) {
+  const res = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) return [];
+  return res.json();
+}
