@@ -55,6 +55,9 @@ const MetricSummary = ({ label, value, sub, isPositive }: any) => (
   </div>
 );
 
+const fmtPct = (v: number | null | undefined, signed = false) =>
+  v == null ? "—" : `${signed && v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+
 // --- Main Page ---
 
 export default function Dashboard() {
@@ -141,7 +144,7 @@ export default function Dashboard() {
       { axis: "Returns", value: Math.min(100, Math.max(0, m.ann_return * 200)) },
       { axis: "Efficiency", value: Math.min(100, Math.max(0, m.sharpe * 33)) },
       { axis: "Stability", value: Math.min(100, Math.max(0, 100 - (m.ann_vol * 150))) },
-      { axis: "Robustness", value: Math.min(100, Math.max(0, 100 - (m.max_drawdown * 150))) },
+      { axis: "Robustness", value: Math.min(100, Math.max(0, 100 - (Math.abs(m.max_drawdown) * 150))) },
       { axis: "Diversity", value: Math.min(100, tickers.length * 15) },
     ];
   };
@@ -163,8 +166,8 @@ export default function Dashboard() {
               <MetricSummary 
                 label="Total Return" 
                 value={data ? `${(data.metrics.ann_return * 100).toFixed(1)}%` : "—"} 
-                sub={data ? `+${(data.metrics.alpha * 100).toFixed(1)}% vs market` : null}
-                isPositive={true}
+                sub={data && data.metrics.alpha != null ? `${fmtPct(data.metrics.alpha, true)} vs market` : null}
+                isPositive={data?.metrics.alpha >= 0}
               />
               <MetricSummary 
                 label="Risk Score" 
@@ -236,15 +239,15 @@ export default function Dashboard() {
                     <div className="lg:col-span-8 flex flex-col gap-6">
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           {[
-                            { label: "Hist. VaR", val: data.metrics.var_hist, color: "text-danger" },
-                            { label: "Robust VaR", val: data.metrics.var_student_t, color: "text-danger" },
-                            { label: "Beta", val: data.metrics.beta, color: "text-warning" },
-                            { label: "Alpha", val: data.metrics.alpha, color: "text-success", pre: "+" },
+                            { label: "Hist. VaR", text: fmtPct(data.metrics.var_hist), color: "text-danger" },
+                            { label: "Robust VaR", text: fmtPct(data.metrics.var_student_t), color: "text-danger" },
+                            { label: "Beta", text: data.metrics.beta == null ? "—" : data.metrics.beta.toFixed(2), color: "text-warning" },
+                            { label: "Alpha", text: fmtPct(data.metrics.alpha, true), color: data.metrics.alpha < 0 ? "text-danger" : "text-success" },
                           ].map((m, i) => (
                             <div key={i} className="sws-card p-6">
                               <p className="text-[10px] text-[#808080] uppercase font-bold mb-2">{m.label}</p>
-                              <p className={`text-2xl font-black ${m.color || 'text-white'}`}>
-                                {m.pre}{typeof m.val === 'number' && m.val < 1 ? `${(m.val * 100).toFixed(1)}%` : m.val.toFixed(2)}
+                              <p className={`text-2xl font-black ${m.color}`}>
+                                {m.text}
                               </p>
                             </div>
                           ))}

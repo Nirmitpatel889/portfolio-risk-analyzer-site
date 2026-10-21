@@ -8,7 +8,7 @@ def test_health_check():
     """Verify the API is up and responding."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "RiskDesk API" in response.json().get("message", "")
+    assert response.json().get("status") == "online"
 
 def test_analyze_endpoint_invalid_ticker():
     """Verify that the API handles invalid tickers with a 500/400 error (currently 500, soon to be 400)."""

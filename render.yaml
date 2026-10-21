@@ -18,8 +18,8 @@ services:
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/out
     envVars:
+      # Must be the backend's public URL: the browser calls it directly, and
+      # fromService `host` only gives the private-network hostname.
+      # If Render gave the backend a different subdomain, update this.
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: risk-analyzer-backend
-          property: host
+        value: https://risk-analyzer-backend.onrender.com

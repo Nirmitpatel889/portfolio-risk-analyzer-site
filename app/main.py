@@ -111,6 +111,11 @@ async def analyze_portfolio(req: AnalysisRequest):
             ticker_info=info
         )
 
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Bad input (unknown ticker, weights not summing to 1, etc.)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -146,6 +151,11 @@ async def optimize_portfolio(req: AnalysisRequest):
             efficient_frontier=fdf.to_dict(orient="records"),
             random_portfolios=rdf.to_dict(orient="records")
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Bad input (unknown ticker, weights not summing to 1, etc.)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -154,7 +164,10 @@ async def simulate_portfolio(req: SimulationRequest):
     try:
         loader = DataLoader()
         returns = loader.get_returns(req.tickers, req.start_date, req.end_date)
-        
+
+        if returns.empty:
+            raise HTTPException(status_code=400, detail="No data found.")
+
         sim = MonteCarloSimulator(returns, req.weights)
         if req.use_fhs:
             paths = sim.run_fhs(n=req.n_paths, horizon=req.horizon, start_value=req.start_value, stress_level=req.stress_level)
@@ -173,6 +186,11 @@ async def simulate_portfolio(req: SimulationRequest):
             median_outcome=final.median(),
             paths_sample=paths.iloc[:, :min(50, req.n_paths)].values.T.tolist()
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Bad input (unknown ticker, weights not summing to 1, etc.)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
