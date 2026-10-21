@@ -78,15 +78,34 @@ class DataLoader:
     def get_info(self, tickers):
         info = {}
         for ticker in tickers:
-            t = yf.Ticker(ticker)
-            # Fetch minimal info to speed up
-            i = t.info
+            # Search first: it needs no crumb, so it works from cloud hosts where
+            # Ticker.info gets HTTP 401 "Invalid Crumb" and comes back empty
+            i = self._search_info(ticker) or self._ticker_info(ticker)
             info[ticker] = {
-                "sector": i.get("sector", "Unknown"),
-                "industry": i.get("industry", "Unknown"),
-                "name": i.get("longName", ticker)
+                "sector": i.get("sector") or "Unknown",
+                "industry": i.get("industry") or "Unknown",
+                "name": i.get("name") or ticker,
             }
         return info
+
+    def _search_info(self, ticker):
+        try:
+            quotes = yf.Search(ticker, max_results=5).quotes
+        except Exception:
+            return {}
+        q = next((q for q in quotes if q.get("symbol", "").upper() == ticker.upper()), None)
+        if q is None:
+            return {}
+        return {"sector": q.get("sector"), "industry": q.get("industry"),
+                "name": q.get("longname") or q.get("shortname")}
+
+    def _ticker_info(self, ticker):
+        try:
+            i = yf.Ticker(ticker).info or {}
+        except Exception:
+            return {}
+        return {"sector": i.get("sector"), "industry": i.get("industry"),
+                "name": i.get("longName") or i.get("shortName")}
 
     def get_returns(self, tickers, start, end, use_cache=True):
         prices = self.get_prices(tickers, start, end, use_cache)
