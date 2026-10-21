@@ -1,20 +1,21 @@
 services:
   # FastAPI Backend
   - type: web
-    name: risk-analyzer-backend
-    env: python
+    name: portfolio-risk-analyzer-api
+    runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PORT
-        value: 8000
+        value: "8000"
       - key: PYTHON_VERSION
         value: 3.11.0
 
   # Next.js Frontend (Static Site)
   - type: web
     name: risk-analyzer-frontend
-    env: static
+    runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/out
     envVars:
@@ -22,4 +23,4 @@ services:
       # fromService `host` only gives the private-network hostname.
       # If Render gave the backend a different subdomain, update this.
       - key: NEXT_PUBLIC_API_URL
-        value: https://risk-analyzer-backend.onrender.com
+        value: https://portfolio-risk-analyzer-api.onrender.com
